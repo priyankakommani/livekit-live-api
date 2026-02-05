@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- LiveKit Client SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <h1>AI Interviewer</h1>
+            </div>
+            <div class="status-badge" id="connection-status">
+                <span class="dot"></span>
+                <span class="text">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <div class="video-grid">
+                <!-- AI Interviewer Video -->
+                <div class="video-card large" id="remote-area">
+                    <div class="video-placeholder">
+                        <div class="avatar">AI</div>
+                        <p>Waiting for Interviewer...</p>
+                    </div>
+                    <video id="remote-video" autoplay playsinline></video>
+                    <div class="participant-label">AI Interviewer</div>
+                    <div class="audio-visualizer" id="remote-visualizer">
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                    </div>
+                </div>
+
+                <!-- User Video (Self View) -->
+                <div class="video-card small" id="local-area">
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <div class="participant-label">You</div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls-bar">
+                <button id="btn-mic" class="control-btn active" title="Toggle Microphone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    </svg>
+                </button>
+                <button id="btn-camera" class="control-btn active" title="Toggle Camera">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 7l-7 5 7 5V7z" />
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                    </svg>
+                </button>
+                <button id="btn-end" class="control-btn danger" title="End Interview">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                    </svg>
+                </button>
+            </div>
+        </main>
+
+        <!-- Start Overlay -->
+        <div class="overlay" id="start-overlay">
+            <div class="modal">
+                <h2>Ready for your Interview?</h2>
+                <p>Please check your camera and microphone permissions.</p>
+                <div class="input-group">
+                    <label>Paste Access Token (or use generic)</label>
+                    <input type="text" id="token-input" placeholder="eyJhbGciOiJIUz...">
+                </div>
+                <button id="btn-connect" class="primary-btn">Start Interview</button>
+            </div>
+        </div>
+
+        <!-- Download Popup (Hidden by default) -->
+        <div class="overlay hidden" id="download-overlay">
+            <div class="modal success">
+                <div class="icon-circle">✓</div>
+                <h2>Interview Completed</h2>
+                <p>Your session has been recorded successfully.</p>
+
+                <div id="download-content">
+                    <p class="sub-text">Processing recording...</p>
+                    <div class="loader"></div>
+                </div>
+
+                <div id="download-actions" class="hidden">
+                    <a href="#" id="download-link" class="primary-btn" target="_blank">
+                        Download Recording
+                    </a>
+                </div>
+
+                <button id="btn-close-overlay" class="text-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
