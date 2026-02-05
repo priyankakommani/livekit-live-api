@@ -1,116 +1,146 @@
-"""
-Local Recording Manager
-Records audio/video locally using MediaRecorder API on the client side
-"""
-
 import os
 import logging
+import asyncio
+import subprocess
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
+from livekit import rtc
 
 logger = logging.getLogger(__name__)
 
-
 class LocalRecordingManager:
     """
-    Manages local recording of interview sessions
-    Note: This coordinates with client-side recording, not server-side
+    Manages local recording of interview sessions (Audio and Video)
     """
     
     def __init__(self):
-        self.recording_started = False
         self.candidate_id: Optional[str] = None
         self.start_time: Optional[datetime] = None
-        self.recordings_dir = Path("recordings")
-        
-        # Ensure recordings directory exists
+        # Always use the project root 'recordings' directory
+        project_root = Path(__file__).parent.parent
+        self.recordings_dir = project_root / "recordings"
         self.recordings_dir.mkdir(exist_ok=True)
-        logger.info(f"Local recordings directory: {self.recordings_dir.absolute()}")
-        
-    def start_recording(self, room_name: str, candidate_id: str) -> str:
-        """
-        Mark recording as started (actual recording happens on client)
-        
-        Args:
-            room_name: Name of the LiveKit room
-            candidate_id: Unique identifier for the candidate
-            
-        Returns:
-            Recording ID (timestamp-based)
-        """
+        logger.info(f"Local recording manager initialized. Saving to: {self.recordings_dir.absolute()}")
+        self._video_tasks = {} # track -> task
+
+    async def start_recording(self, room: rtc.Room, candidate_id: str):
         self.candidate_id = candidate_id
         self.start_time = datetime.now()
-        self.recording_started = True
         
-        recording_id = f"{candidate_id}_{self.start_time.strftime('%Y%m%d_%H%M%S')}"
-        
-        logger.info(f"Recording started for candidate: {candidate_id}")
-        logger.info(f"Recording ID: {recording_id}")
-        logger.info(f"Recordings will be saved to: {self.recordings_dir.absolute()}")
-        
-        return recording_id
-        
-    def stop_recording(self) -> dict:
-        """
-        Mark recording as stopped
-        
-        Returns:
-            dict with recording information
-        """
-        if not self.recording_started:
-            logger.warning("No active recording to stop")
-            return {}
-        
-        end_time = datetime.now()
-        duration = (end_time - self.start_time).total_seconds() if self.start_time else 0
-        
-        self.recording_started = False
-        
-        logger.info(f"Recording stopped for candidate: {self.candidate_id}")
-        logger.info(f"Duration: {duration:.2f} seconds")
-        
-        return {
-            "candidate_id": self.candidate_id,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "end_time": end_time.isoformat(),
-            "duration_seconds": duration,
-            "recordings_directory": str(self.recordings_dir.absolute())
-        }
-    
-    def get_recording_path(self, candidate_id: str, timestamp: str = None) -> Path:
-        """Get the expected path for a recording file"""
-        if timestamp is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{candidate_id}_{timestamp}.webm"
-        return self.recordings_dir / filename
-    
-    def list_recordings(self) -> list:
-        """List all local recordings"""
-        recordings = []
-        
-        for file in self.recordings_dir.glob("*.webm"):
-            stat = file.stat()
-            recordings.append({
-                "filename": file.name,
-                "path": str(file.absolute()),
-                "size_mb": stat.st_size / (1024 * 1024),
-                "created": datetime.fromtimestamp(stat.st_ctime).isoformat()
-            })
-        
-        return recordings
+        logger.info(f"Local recording manager started for {candidate_id}")
 
+        # 1. Handle already subscribed tracks (Remote)
+        for participant in room.remote_participants.values():
+            for publication in participant.track_publications.values():
+                if publication.track and publication.subscribed:
+                    self._handle_track(publication.track, participant.identity)
 
-# Alternative: Server-side recording using ffmpeg (for self-hosted LiveKit only)
-class ServerSideRecordingManager:
-    """
-    Server-side recording manager
-    Only works with self-hosted LiveKit + Egress service
-    """
-    
-    def __init__(self):
-        logger.warning(
-            "Server-side recording requires self-hosted LiveKit with Egress service. "
-            "LiveKit Cloud free tier does not support this. "
-            "Consider using client-side recording instead."
-        )
+        # 2. Handle future tracks (Remote)
+        @room.on("track_subscribed")
+        def on_track_subscribed(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
+            self._handle_track(track, participant.identity)
+
+        # 3. Handle Local Participant (the Bot's own voice)
+        for publication in room.local_participant.track_publications.values():
+            if publication.track:
+                self._handle_track(publication.track, "Bot")
+
+        @room.local_participant.on("track_published")
+        def on_local_track_published(publication: rtc.LocalTrackPublication):
+            if publication.track:
+                self._handle_track(publication.track, "Bot")
+
+    def _handle_track(self, track: rtc.Track, identity: str):
+        if track.sid in self._video_tasks:
+            return
+
+        if track.kind == rtc.TrackKind.KIND_VIDEO:
+            logger.info(f"Recording video track {track.sid} from {identity}")
+            task = asyncio.create_task(self._record_video_track(track, identity))
+            self._video_tasks[track.sid] = task
+        elif track.kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info(f"Recording audio track {track.sid} from {identity}")
+            task = asyncio.create_task(self._record_audio_track(track, identity))
+            self._video_tasks[track.sid] = task
+
+    async def _record_video_track(self, track: rtc.VideoTrack, participant_id: str):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = self.recordings_dir / f"{self.candidate_id}_video_{participant_id}_{timestamp}.mp4"
+        
+        # We'll use ffmpeg to encode the frames
+        video_stream = rtc.VideoStream(track)
+        process = None
+        
+        try:
+            async for frame in video_stream:
+                if process is None:
+                    width, height = frame.width, frame.height
+                    logger.info(f"Starting ffmpeg for video recording: {width}x{height} -> {output_path}")
+                    
+                    cmd = [
+                        'ffmpeg', '-y',
+                        '-f', 'rawvideo',
+                        '-vcodec', 'rawvideo',
+                        '-s', f'{width}x{height}',
+                        '-pix_fmt', 'yuv420p',
+                        '-r', '24',
+                        '-i', '-',
+                        '-c:v', 'libx264',
+                        '-preset', 'ultrafast',
+                        '-pix_fmt', 'yuv420p',
+                        str(output_path)
+                    ]
+                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+                # Ensure we are sending I420 to ffmpeg
+                i420_frame = frame.convert(rtc.VideoBufferType.I420)
+                try:
+                    process.stdin.write(i420_frame.data)
+                except Exception as e:
+                    logger.error(f"Error writing video to ffmpeg: {e}")
+                    break
+        finally:
+            if process:
+                process.stdin.close()
+                process.wait()
+                logger.info(f"Video recording finished: {output_path}")
+
+    async def _record_audio_track(self, track: rtc.AudioTrack, participant_id: str):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = self.recordings_dir / f"{self.candidate_id}_audio_{participant_id}_{timestamp}.ogg"
+        
+        audio_stream = rtc.AudioStream(track)
+        process = None
+        
+        try:
+            async for frame in audio_stream:
+                if process is None:
+                    logger.info(f"Starting ffmpeg for audio recording: {frame.sample_rate}Hz -> {output_path}")
+                    cmd = [
+                        'ffmpeg', '-y',
+                        '-f', 's16le',
+                        '-ar', str(frame.sample_rate),
+                        '-ac', str(frame.num_channels),
+                        '-i', '-',
+                        '-c:a', 'libopus',
+                        str(output_path)
+                    ]
+                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                
+                try:
+                    process.stdin.write(frame.data)
+                except Exception as e:
+                    logger.error(f"Error writing audio to ffmpeg: {e}")
+                    break
+        finally:
+            if process:
+                process.stdin.close()
+                process.wait()
+                logger.info(f"Audio recording finished: {output_path}")
+
+    def stop_recording(self):
+        for task in self._video_tasks.values():
+            task.cancel()
+        self._video_tasks.clear()
+        return {"status": "stopped", "dir": str(self.recordings_dir.absolute())}

@@ -104,12 +104,15 @@ class InterviewAgent:
             await ctx.connect()
             logger.info(f"Connected to room: {ctx.room.name}")
 
+            # Start local recording (subscribes to tracks)
+            await self.recorder.start_recording(ctx.room, self.candidate_id)
+
             # Start the session (Modern API requires the agent)
             # Setting record=False to avoid 401 errors in LiveKit Cloud
-            # Local recording manager still handles candidate data
             await self.session.start(self.agent, room=ctx.room, record=False)
+            
             self.start_time = datetime.now()
-            logger.info("AgentSession started")
+            logger.info("AgentSession started.")
 
             # Greet the candidate using the RealtimeModel's native generation
             # Since .say() requires a TTS, we push a message to history and generate
@@ -131,7 +134,7 @@ class InterviewAgent:
             if self.recorder:
                 try:
                     info = self.recorder.stop_recording()
-                    logger.info(f"Recording stopped: {info}")
+                    logger.info(f"Local recording stopped: {info}")
                 except: pass
             
             if self.transcription:
