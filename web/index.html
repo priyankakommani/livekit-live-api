@@ -10,7 +10,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- LiveKit Client SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <!-- LiveKit Client SDK - Robust Loader -->
+    <script>
+        function loadFallback() {
+            console.warn("CDN failed, loading fallback...");
+            var script = document.createElement('script');
+            script.src = "https://unpkg.com/livekit-client@2.5.9/dist/livekit-client.umd.min.js";
+            document.head.appendChild(script);
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.9/dist/livekit-client.umd.min.js"
+        onerror="loadFallback()"></script>
 </head>
 
 <body>
@@ -81,8 +91,7 @@
                 <h2>Ready for your Interview?</h2>
                 <p>Please check your camera and microphone permissions.</p>
                 <div class="input-group">
-                    <label>Paste Access Token (or use generic)</label>
-                    <input type="text" id="token-input" placeholder="eyJhbGciOiJIUz...">
+                    <!-- Token is now fetched automatically from Node backend -->
                 </div>
                 <button id="btn-connect" class="primary-btn">Start Interview</button>
             </div>
@@ -111,6 +120,7 @@
         </div>
     </div>
 
+    <script src="gemini-realtime.js"></script>
     <script src="script.js"></script>
 </body>
 

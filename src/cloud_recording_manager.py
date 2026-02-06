@@ -49,7 +49,7 @@ class CloudRecordingManager:
             
             file_output = api.EncodedFileOutput(
                 file_type=api.EncodedFileType.MP4,
-                filepath=f"{candidate_id}_interview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                filepath=f"ai_interview/{candidate_id}/{{egress_id}}.mp4",
                 s3=s3_upload
             )
             
@@ -74,7 +74,13 @@ class CloudRecordingManager:
             return egress
             
         except Exception as e:
-            logger.error(f"Failed to start cloud recording: {e}", exc_info=True)
+            if "resource_exhausted" in str(e).lower() or "limit exceeded" in str(e).lower():
+                logger.error("!!!" * 20)
+                logger.error("LIVEKIT ERROR: CONCURRENT EGRESS LIMIT EXCEEDED")
+                logger.error("You have too many active recordings running. Please stop old ones in LiveKit Cloud Consol.")
+                logger.error("!!!" * 20)
+            else:
+                logger.error(f"Failed to start cloud recording: {e}", exc_info=True)
             raise
     
     async def stop_recording(self):
@@ -89,7 +95,8 @@ class CloudRecordingManager:
         
         try:
             # Stop the egress
-            egress = await self.livekit_api.egress.stop_egress(self.egress_id)
+            request = api.StopEgressRequest(egress_id=self.egress_id)
+            egress = await self.livekit_api.egress.stop_egress(request)
             
             logger.info(f"✓ Cloud recording stopped successfully")
             logger.info(f"  Egress ID: {self.egress_id}")

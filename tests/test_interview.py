@@ -79,8 +79,12 @@ def main():
     print("=" * 60)
     
     import time
-    room_name = f"test-room-{int(time.time())}"
-    candidate_id = "test-candidate-001"
+    from datetime import datetime
+    
+    timestamp = int(time.time())
+    room_name = f"test-room-{timestamp}"
+    # Use a unique candidate ID to test folder creation in S3
+    candidate_id = f"candidate-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     participant_name = "Test Candidate"
     
     # Create test room

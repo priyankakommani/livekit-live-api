@@ -223,10 +223,12 @@ class InterviewAgent:
     def __init__(
         self,
         candidate_id: str,
+        room_id: str,
         job_role: str = "software_engineer",
         interview_duration: int = 30
     ):
         self.candidate_id = candidate_id
+        self.room_id = room_id
         self.job_role = job_role
         self.interview_duration = interview_duration
         self.start_time = None
@@ -260,12 +262,17 @@ class InterviewAgent:
                         logger.info("Recording is processing. Check LiveKit Console.")
             except Exception as e:
                 logger.error(f"Error stopping cloud recording: {e}", exc_info=True)
+            
+            # Additional small delay to ensure LiveKit processes the stop request
+            logger.info("Waiting for recording finalization...")
+            await asyncio.sleep(2)
 
         # Send Data Packet to frontend (to trigger popup/notification)
         try:
             payload = json.dumps({
                 "type": "INTERVIEW_ENDED",
                 "status": "completed",
+                "room_id": self.room_id,
                 "recording_url": download_url,
                 "message": "Interview completed. Recording is processing."
             }).encode('utf-8')
@@ -283,8 +290,10 @@ class InterviewAgent:
         
         # Save transcription
         if self.transcription:
-            logger.info("Saving transcription...")
-            self.transcription.save_transcript()
+            logger.info("Saving transcription and uploading to S3...")
+            # This triggers the S3 upload logic now built into save_formatted_transcript
+            egress_id = self.recorder.egress_id if self.recorder else None
+            self.transcription.save_formatted_transcript(egress_id=egress_id)
         
         # Disconnect
         logger.info("Disconnecting room...")
@@ -315,9 +324,10 @@ class InterviewAgent:
             self.session = AgentSession()
             
             # 2. Setup Recording & Transcription
+            # Use Room ID for S3 folder structure
             self.recorder = CloudRecordingManager()
             self.transcription = TranscriptionHandler(
-                interview_id=f"{self.candidate_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                interview_id=self.room_id 
             )
             
             # 3. Add Event Handlers for Transcription (Robustness)
@@ -366,6 +376,15 @@ class InterviewAgent:
                     except Exception as e:
                         logger.error(f"Failed to process data packet: {e}")
 
+            # Handle user disconnecting (closing tab)
+            @ctx.room.on("participant_disconnected")
+            def on_participant_disconnected(participant: rtc.RemoteParticipant):
+                logger.info(f"Participant disconnected: {participant.identity}")
+                # If the candidate leaves, we should wrap up
+                if participant.identity == self.candidate_id or "candidate" in participant.identity.lower():
+                    logger.info("Candidate left the interview. Cleaning up...")
+                    asyncio.create_task(self.handle_cleanup(ctx))
+
             # Manually subscribe to all remote tracks to ensure recording works
             for participant in ctx.room.remote_participants.values():
                 for publication in participant.track_publications.values():
@@ -377,7 +396,7 @@ class InterviewAgent:
             # Start Cloud Recording (Egress)
             try:
                 logger.info("Starting cloud recording...")
-                await self.recorder.start_recording(ctx.room.name, self.candidate_id)
+                await self.recorder.start_recording(ctx.room.name, self.room_id)
             except Exception as e:
                 logger.error(f"FAILED TO START CLOUD RECORDING: {e}")
                 
@@ -468,13 +487,24 @@ async def entrypoint(ctx: JobContext):
     room_metadata = json.loads(ctx.room.metadata) if ctx.room.metadata else {}
     candidate_id = room_metadata.get("candidate_id", "unknown")
     job_role = room_metadata.get("job_role", "software_engineer")
+    print(room_metadata)
+    
+    # FALLBACK: Ensure we never use "unknown" for folders
+    if candidate_id == "unknown":
+        import uuid
+        # Generate a unique session ID
+        candidate_id = f"session-{datetime.now().strftime('%Y%m%d_%H%M%S')}-{str(uuid.uuid4())[:6]}"
+        logger.info(f"Metadata missing. Generated fallback ID: {candidate_id}")
     
     logger.info(f"Candidate ID: {candidate_id}")
     logger.info(f"Job Role: {job_role}")
     
+    room_id = ctx.room.sid
+    
     # Create and start interview agent
     agent = InterviewAgent(
         candidate_id=candidate_id,
+        room_id=room_id,
         job_role=job_role,
         interview_duration=30  # 30 minutes default
     )
