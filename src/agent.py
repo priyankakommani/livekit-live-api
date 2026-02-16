@@ -188,12 +188,20 @@ import logging
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
-
 # Load environment variables
-project_root = Path(__file__).parent.parent
-env_path = project_root / '.env'
-load_dotenv(env_path)
+# Try current directory and parent directory for .env
+load_dotenv()
+load_dotenv(Path(__file__).parent.parent / '.env')
+
+# Explicitly check for required environment variables for better debugging
+REQUIRED_VARS = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "GOOGLE_API_KEY"]
+missing_vars = [v for v in REQUIRED_VARS if not os.getenv(v)]
+
+if missing_vars:
+    print("\n" + "!"*60)
+    print(f"CRITICAL ERROR: Missing Environment Variables: {', '.join(missing_vars)}")
+    print("Please add these to your Render 'Environment' settings.")
+    print("!"*60 + "\n")
 
 from livekit.agents import (
     Agent,
@@ -506,6 +514,8 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
+    # In production, use 'start'. Locally, you can use 'dev'.
+    # This block is called when running `python agent.py start`
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
