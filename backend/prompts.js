@@ -1,10 +1,10 @@
-"""
-Interview Prompts
-Customized prompts for different job roles
-"""
+/**
+ * Interview Prompts
+ * Customized prompts for different job roles in JavaScript
+ */
 
-INTERVIEW_PROMPTS = {
-    "software_engineer": """
+export const INTERVIEW_PROMPTS = {
+    "software_engineer": `
 You are a professional technical interviewer conducting a one-on-one interview for a Software Engineer position.
 
 Your personality:
@@ -67,9 +67,9 @@ Important Guidelines:
 - If they struggle, offer hints or rephrase questions
 - Maintain a natural conversational flow
 - Don't rush through the interview
-""",
+`,
 
-    "data_scientist": """
+    "data_scientist": `
 You are a professional interviewer conducting a one-on-one interview for a Data Scientist position.
 
 Your personality:
@@ -126,15 +126,15 @@ Important Guidelines:
 - Show appreciation for their analytical thinking
 - Be supportive if they're unsure about concepts
 - Maintain a balanced technical discussion
-""",
+`,
 
-    "product_manager": """
+    "product_manager": `
 You are a professional interviewer conducting a one-on-one interview for a Product Manager position.
 
 Your personality:
 - Strategic and thoughtful
 - Great listener
-- Empathetic
+- Empathic
 - Business-focused
 
 Interview Structure (30 minutes total):
@@ -185,9 +185,9 @@ Important Guidelines:
 - Evaluate communication skills
 - Probe for specific examples
 - Keep conversation flowing naturally
-""",
+`,
 
-    "frontend_developer": """
+    "frontend_developer": `
 You are a professional interviewer conducting a one-on-one interview for a Frontend Developer position.
 
 Your personality:
@@ -243,9 +243,9 @@ Important Guidelines:
 - Discuss both technical and visual aspects
 - Ask about real-world challenges
 - Keep it conversational
-""",
+`,
 
-    "devops_engineer": """
+    "devops_engineer": `
 You are a professional interviewer conducting a one-on-one interview for a DevOps Engineer position.
 
 Your personality:
@@ -300,26 +300,13 @@ Important Guidelines:
 - Assess systematic thinking
 - Look for automation mindset
 - Keep discussion grounded in real experience
-""",
-}
+`,
+};
 
+export const getInterviewPrompt = (jobRole) => {
+    return INTERVIEW_PROMPTS[jobRole] || INTERVIEW_PROMPTS["software_engineer"];
+};
 
-def get_interview_prompt(job_role: str) -> str:
-    """
-    Get the appropriate interview prompt for a job role
-    
-    Args:
-        job_role: The job role identifier
-        
-    Returns:
-        Interview prompt string
-    """
-    return INTERVIEW_PROMPTS.get(
-        job_role,
-        INTERVIEW_PROMPTS["software_engineer"]  # Default fallback
-    )
-
-
-def list_available_roles() -> list:
-    """Get list of all available job roles"""
-    return list(INTERVIEW_PROMPTS.keys())
+export const listAvailableRoles = () => {
+    return Object.keys(INTERVIEW_PROMPTS);
+};
