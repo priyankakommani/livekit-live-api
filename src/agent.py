@@ -246,6 +246,8 @@ class InterviewAgent:
         
         # Stop cloud recording
         download_url = None
+        egress_id = self.recorder.egress_id if self.recorder else None
+        
         if self.recorder:
             try:
                 logger.info("Stopping cloud recording...")
@@ -254,41 +256,48 @@ class InterviewAgent:
                     logger.info(f"✓ Cloud recording process final status: {egress.status}")
                     if egress.file_results and len(egress.file_results) > 0:
                         download_url = egress.file_results[0].download_url
-                        if download_url:
-                            logger.info(f"Download available at: {download_url}")
-                    else:
-                        logger.info("Recording is processing. Check LiveKit Console.")
             except Exception as e:
                 logger.error(f"Error stopping cloud recording: {e}", exc_info=True)
 
-        # Send Data Packet to frontend (to trigger popup/notification)
+        # Save transcripts (both formats) and publish to S3
+        if self.transcription:
+            logger.info("Saving transcriptions and uploading to S3...")
+            # Use unique_session_id as the filename for consistency with MP4
+            filename_base = self.unique_session_id
+            
+            # 1. Save and upload text transcript
+            txt_path = self.transcription.save_formatted_transcript(self.candidate_id, filename_base)
+            if txt_path:
+                asyncio.create_task(self.transcription.publish_to_s3(
+                    txt_path, self.candidate_id, f"{filename_base}_transcript.txt"
+                ))
+            
+            # 2. Save and upload json transcript
+            json_path = self.transcription.save_json_transcript(self.candidate_id, filename_base)
+            if json_path:
+                asyncio.create_task(self.transcription.publish_to_s3(
+                    json_path, self.candidate_id, f"{filename_base}.json"
+                ))
+
+        # Send Data Packet to frontend
         try:
+            # For the notification, we use the session_id as the egress_id reference if one wasn't captured
+            final_id = egress_id if egress_id else self.unique_session_id
             payload = json.dumps({
                 "type": "INTERVIEW_ENDED",
                 "status": "completed",
+                "room_id": ctx.room.sid if hasattr(ctx.room, 'sid') else ctx.room.name,
+                "egress_id": final_id,
                 "recording_url": download_url,
-                "message": "Interview completed. Recording is processing."
+                "message": "Interview completed. Recording and transcripts are processing."
             }).encode('utf-8')
 
             if ctx.room.local_participant:
-                await ctx.room.local_participant.publish_data(
-                    payload,
-                    topic="interview_status"
-                )
+                await ctx.room.local_participant.publish_data(payload, topic="interview_status")
                 logger.info("✓ Sent INTERVIEW_ENDED data packet to frontend")
-                # Wait a bit for packet to be delivered
                 await asyncio.sleep(2)
         except Exception as e:
             logger.error(f"Failed to send data packet: {e}")
-        
-        # Save transcription
-        if self.transcription:
-            logger.info("Saving transcription...")
-            self.transcription.save_transcript()
-        
-        # Disconnect
-        logger.info("Disconnecting room...")
-        await ctx.room.disconnect()
         
     async def start_interview(self, ctx: JobContext):
         """Start the interview session"""
@@ -315,12 +324,16 @@ class InterviewAgent:
             self.session = AgentSession()
             
             # 2. Setup Recording & Transcription
+            # Generate a truly unique session ID for this specific interview attempt
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.unique_session_id = f"session_{timestamp}"
+            
             self.recorder = CloudRecordingManager()
             self.transcription = TranscriptionHandler(
-                interview_id=f"{self.candidate_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                interview_id=f"{self.candidate_id}_{self.unique_session_id}"
             )
             
-            # 3. Add Event Handlers for Transcription (Robustness)
+            # 3. Add Event Handlers
             @self.session.on("user_input_transcribed")
             def _on_user_transcript(ev):
                 if ev.transcript:
@@ -333,10 +346,24 @@ class InterviewAgent:
                                 'is_final': True
                             })
                         ))
+                    
+                    # Send to frontend via data channel
+                    transcript_data = json.dumps({
+                        'type': 'TRANSCRIPT',
+                        'speaker': 'user',
+                        'text': ev.transcript,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    asyncio.create_task(
+                        ctx.room.local_participant.publish_data(
+                            transcript_data.encode('utf-8'),
+                            reliable=True,
+                            topic="transcripts"
+                        )
+                    )
             
             @self.session.on("conversation_item_added")
             def _on_item_added(ev):
-                # ev.item is a ChatMessage
                 if ev.item.role == "assistant" and ev.item.text_content:
                     logger.info(f"--- BOT: {ev.item.text_content} ---")
                     if self.transcription:
@@ -347,14 +374,23 @@ class InterviewAgent:
                                 'is_final': True
                             })
                         ))
+                    
+                    # Send to frontend via data channel
+                    transcript_data = json.dumps({
+                        'type': 'TRANSCRIPT',
+                        'speaker': 'bot',
+                        'text': ev.item.text_content,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    asyncio.create_task(
+                        ctx.room.local_participant.publish_data(
+                            transcript_data.encode('utf-8'),
+                            reliable=True,
+                            topic="transcripts"
+                        )
+                    )
             
-            # 4. Connect and Start
-            # Auto-subscribe is enabled by default in newer SDK versions
-            logger.info("Connecting to room...")
-            await ctx.connect()
-            logger.info(f"Connected to room: {ctx.room.name}")
-            
-            # Subscribe to data packets (for user signals like "End Call")
+            # Subscribe to data packets
             @ctx.room.on("data_received")
             def on_data_received(payload: bytes, participant: rtc.RemoteParticipant, kind: rtc.DataPacketKind, topic: str = ""):
                 if topic == "user_actions":
@@ -365,37 +401,22 @@ class InterviewAgent:
                             asyncio.create_task(self.handle_cleanup(ctx))
                     except Exception as e:
                         logger.error(f"Failed to process data packet: {e}")
-
-            # Manually subscribe to all remote tracks to ensure recording works
-            for participant in ctx.room.remote_participants.values():
-                for publication in participant.track_publications.values():
-                    if not publication.subscribed and publication.track:
-                        publication.set_subscribed(True)
-                        logger.info(f"Subscribed to {publication.kind} track from {participant.identity}")
             
-            # Start local recording (will now receive tracks properly)
-            # Start Cloud Recording (Egress)
+            # 4. Connect and Start
+            logger.info("Connecting to room...")
+            await ctx.connect()
+            logger.info(f"Connected to room: {ctx.room.name}")
+            
+            # Start Cloud Recording (Egress) with our custom unique ID
             try:
-                logger.info("Starting cloud recording...")
-                await self.recorder.start_recording(ctx.room.name, self.candidate_id)
+                logger.info(f"Starting cloud recording with ID: {self.unique_session_id}...")
+                await self.recorder.start_recording(ctx.room.name, self.candidate_id, self.unique_session_id)
             except Exception as e:
                 logger.error(f"FAILED TO START CLOUD RECORDING: {e}")
-                
-                # Notify in chat so user knows recording isn't happening
-                if self.session: 
-                    self.session.history.add_message(
-                        role="assistant",
-                        content="Warning: Session recording could not be started. Please check server configuration."
-                    )
             
-            # Subscribe to tracks as they're published
-            @ctx.room.on("track_published")
-            def on_track_published(publication: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant):
-                logger.info(f"New track published: {publication.kind} from {participant.identity}")
-                publication.set_subscribed(True)
+            # ... rest of start_interview logic ...
             
-            # Start the session (Modern API requires the agent)
-            # Setting record=False to avoid 401 errors in LiveKit Cloud
+            # Start the session
             logger.info("Starting agent session...")
             await self.session.start(self.agent, room=ctx.room, record=False)
             
@@ -466,7 +487,9 @@ async def entrypoint(ctx: JobContext):
     
     # Get metadata from room
     room_metadata = json.loads(ctx.room.metadata) if ctx.room.metadata else {}
-    candidate_id = room_metadata.get("candidate_id", "unknown")
+    
+    # Use Room Name as fallback to ensure a unique string folder name instead of a coroutine/unknown
+    candidate_id = room_metadata.get("candidate_id", ctx.room.name)
     job_role = room_metadata.get("job_role", "software_engineer")
     
     logger.info(f"Candidate ID: {candidate_id}")

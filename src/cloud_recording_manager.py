@@ -25,7 +25,7 @@ class CloudRecordingManager:
         
         logger.info("Cloud recording manager initialized")
     
-    async def start_recording(self, room_name: str, candidate_id: str):
+    async def start_recording(self, room_name: str, candidate_id: str, filename: str):
         """Start cloud recording for the entire room"""
         self.candidate_id = candidate_id
         
@@ -35,21 +35,21 @@ class CloudRecordingManager:
         
         try:
             # Create room composite recording (all participants in one video)
-            # Inject S3 credentials directly from ENV if available to bypass Console config
             s3_upload = None
             if os.getenv("S3_ACCESS_KEY") and os.getenv("S3_SECRET_KEY") and os.getenv("S3_BUCKET"):
-                logger.info("Injecting S3 credentials from environment variables...")
                 s3_upload = api.S3Upload(
                     access_key=os.getenv("S3_ACCESS_KEY"),
                     secret=os.getenv("S3_SECRET_KEY"),
                     region=os.getenv("S3_REGION", "us-east-1"),
                     bucket=os.getenv("S3_BUCKET"),
-                    endpoint=os.getenv("S3_ENDPOINT") # Optional
+                    endpoint=os.getenv("S3_ENDPOINT")
                 )
             
+            # Use the filename passed from the agent
+            base_path = f"ai_interview/{candidate_id}/"
             file_output = api.EncodedFileOutput(
                 file_type=api.EncodedFileType.MP4,
-                filepath=f"{candidate_id}_interview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                filepath=base_path + ".mp4",
                 s3=s3_upload
             )
             

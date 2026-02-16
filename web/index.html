@@ -4,111 +4,483 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Interview System</title>
+    <title>AI Interview Pro | Professional AI Interviews</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
     <link rel="stylesheet" href="style.css">
-    <!-- LiveKit Client SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --bg-dark: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --danger: #ef4444;
+            --success: #10b981;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            background-image:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
+        }
+
+        /* --- Welcome Screen --- */
+        #welcome-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        #welcome-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.05);
+        }
+
+        .setup-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            padding: 3rem;
+            border-radius: 2rem;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .setup-card h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(to right, #818cf8, #f472b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .setup-card p {
+            color: var(--text-dim);
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            text-align: left;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-dim);
+            font-size: 0.875rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            color: white;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        .primary-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: 1rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .primary-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+        }
+
+        /* --- Interview Arena --- */
+        .app-container {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            padding: 1.5rem;
+            gap: 1.5rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-box {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 8px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+        }
+
+        .status-dot.online {
+            background: var(--success);
+        }
+
+        .main-arena {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 1.5rem;
+        }
+
+        .video-main {
+            position: relative;
+            background: var(--card-bg);
+            border-radius: 2rem;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #remote-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-dark);
+            z-index: 1;
+        }
+
+        .avatar-ring {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+            }
+
+            70% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 20px rgba(99, 102, 241, 0);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+            }
+        }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .local-video-card {
+            background: var(--card-bg);
+            border-radius: 1.5rem;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            position: relative;
+        }
+
+        #local-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .transcript-card {
+            flex: 1;
+            background: var(--glass);
+            border-radius: 1.5rem;
+            border: 1px solid var(--glass-border);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .transcript-card h3 {
+            font-size: 0.875rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        #transcript-log {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .msg {
+            margin-bottom: 0.5rem;
+        }
+
+        .msg.ai {
+            color: #818cf8;
+        }
+
+        .msg.user {
+            color: #f472b6;
+        }
+
+        footer {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .round-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .round-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .round-btn.danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+        }
+
+        .round-btn.danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .round-btn.muted {
+            color: var(--danger);
+        }
+
+        /* --- Loading Overlay --- */
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #loading-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--glass);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
 </head>
 
 <body>
-    <div class="app-container">
-        <!-- Header -->
+
+    <!-- Welcome Screen -->
+    <div id="welcome-screen">
+        <div class="setup-card">
+            <h1>AI Interview Pro</h1>
+            <p>Ready to start your technical assessment?</p>
+
+            <div class="form-group">
+                <label>Your Name</label>
+                <input type="text" id="candidate-name" placeholder="Enter your full name">
+            </div>
+
+            <div class="form-group">
+                <label>Target Role</label>
+                <select id="job-role">
+                    <option value="software_engineer">Software Engineer</option>
+                    <option value="data_scientist">Data Scientist</option>
+                    <option value="product_manager">Product Manager</option>
+                    <option value="frontend_developer">Frontend Developer</option>
+                    <option value="devops_engineer">DevOps Engineer</option>
+                </select>
+            </div>
+
+            <button class="primary-btn" id="start-btn">Start Interview Session</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="app-container hidden" id="app-ui">
         <header>
             <div class="logo">
-                <div class="logo-icon"></div>
-                <h1>AI Interviewer</h1>
+                <div class="logo-box"></div>
+                AI Interviewer
             </div>
-            <div class="status-badge" id="connection-status">
-                <span class="dot"></span>
-                <span class="text">Disconnected</span>
+            <div class="status-pill">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Connecting...</span>
             </div>
         </header>
 
-        <!-- Main Content -->
-        <main>
-            <div class="video-grid">
-                <!-- AI Interviewer Video -->
-                <div class="video-card large" id="remote-area">
-                    <div class="video-placeholder">
-                        <div class="avatar">AI</div>
-                        <p>Waiting for Interviewer...</p>
-                    </div>
-                    <video id="remote-video" autoplay playsinline></video>
-                    <div class="participant-label">AI Interviewer</div>
-                    <div class="audio-visualizer" id="remote-visualizer">
-                        <div class="bar"></div>
-                        <div class="bar"></div>
-                        <div class="bar"></div>
-                    </div>
+        <main class="main-arena">
+            <div class="video-main">
+                <div class="video-placeholder" id="remote-placeholder">
+                    <div class="avatar-ring">AI</div>
+                    <p id="placeholder-text">Initializing AI Interviewer...</p>
                 </div>
-
-                <!-- User Video (Self View) -->
-                <div class="video-card small" id="local-area">
-                    <video id="local-video" autoplay playsinline muted></video>
-                    <div class="participant-label">You</div>
-                </div>
+                <video id="remote-video" autoplay playsinline></video>
             </div>
 
-            <!-- Controls -->
-            <div class="controls-bar">
-                <button id="btn-mic" class="control-btn active" title="Toggle Microphone">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    </svg>
-                </button>
-                <button id="btn-camera" class="control-btn active" title="Toggle Camera">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M23 7l-7 5 7 5V7z" />
-                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                    </svg>
-                </button>
-                <button id="btn-end" class="control-btn danger" title="End Interview">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path
-                            d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-                    </svg>
-                </button>
+            <div class="side-panel">
+                <div class="local-video-card">
+                    <video id="local-video" autoplay playsinline muted></video>
+                </div>
+                <div class="transcript-card">
+                    <h3>Live Transcript</h3>
+                    <div id="transcript-log">
+                        <div class="msg">Waiting for conversation to start...</div>
+                    </div>
+                </div>
             </div>
         </main>
 
-        <!-- Start Overlay -->
-        <div class="overlay" id="start-overlay">
-            <div class="modal">
-                <h2>Ready for your Interview?</h2>
-                <p>Please check your camera and microphone permissions.</p>
-                <div class="input-group">
-                    <label>Paste Access Token (or use generic)</label>
-                    <input type="text" id="token-input" placeholder="eyJhbGciOiJIUz...">
-                </div>
-                <button id="btn-connect" class="primary-btn">Start Interview</button>
-            </div>
-        </div>
+        <footer>
+            <button class="round-btn" id="mic-btn" title="Toggle Mic">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                </svg>
+            </button>
+            <button class="round-btn" id="cam-btn" title="Toggle Camera">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 7l-7 5 7 5V7z" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                </svg>
+            </button>
+            <button class="round-btn danger" id="end-btn" title="End Call">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                </svg>
+            </button>
+        </footer>
+    </div>
 
-        <!-- Download Popup (Hidden by default) -->
-        <div class="overlay hidden" id="download-overlay">
-            <div class="modal success">
-                <div class="icon-circle">✓</div>
-                <h2>Interview Completed</h2>
-                <p>Your session has been recorded successfully.</p>
-
-                <div id="download-content">
-                    <p class="sub-text">Processing recording...</p>
-                    <div class="loader"></div>
-                </div>
-
-                <div id="download-actions" class="hidden">
-                    <a href="#" id="download-link" class="primary-btn" target="_blank">
-                        Download Recording
-                    </a>
-                </div>
-
-                <button id="btn-close-overlay" class="text-btn">Close</button>
-            </div>
-        </div>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem;" id="loading-text">Preparing session...</p>
     </div>
 
     <script src="script.js"></script>

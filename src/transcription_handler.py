@@ -1,11 +1,7 @@
-"""
-Transcription Handler
-Manages real-time transcription and transcript storage
-"""
-
 import os
 import json
 import logging
+import boto3
 from datetime import datetime
 from typing import List, Dict
 
@@ -35,27 +31,28 @@ class TranscriptionHandler:
         
     async def on_transcript(self, event):
         """
-        Handle incoming transcription events
-        
-        Args:
-            event: Transcription event from LiveKit
+        Handle incoming transcription events with robustness
         """
         try:
-            # Extract transcript information
+            # Safely get identity and avoid coroutines
+            speaker_id = "unknown"
+            if hasattr(event, 'participant') and event.participant:
+                speaker_id = event.participant.identity
+                # If it's still a coroutine (from ctx.room.sid), stringify it or use a default
+                if not isinstance(speaker_id, str):
+                    speaker_id = str(speaker_id)
+
             transcript_entry = {
                 "timestamp": datetime.now().isoformat(),
-                "speaker": event.participant.identity if hasattr(event, 'participant') else "unknown",
-                "text": event.text if hasattr(event, 'text') else "",
-                "is_final": event.is_final if hasattr(event, 'is_final') else True,
+                "speaker": speaker_id,
+                "text": str(event.text) if hasattr(event, 'text') else "",
+                "is_final": getattr(event, 'is_final', True),
             }
             
-            # Add to in-memory transcript
             self.transcript.append(transcript_entry)
-            
-            # Save to file (append mode)
             await self.save_transcript_chunk(transcript_entry)
             
-            logger.debug(f"Transcript: [{transcript_entry['speaker']}] {transcript_entry['text']}")
+            logger.debug(f"Transcript Item: [{speaker_id}] {transcript_entry['text']}")
             
         except Exception as e:
             logger.error(f"Error processing transcript: {e}")
@@ -75,61 +72,140 @@ class TranscriptionHandler:
             
     def get_full_transcript(self, include_non_final: bool = False) -> str:
         """
-        Get the complete formatted transcript
-        
-        Args:
-            include_non_final: Include non-final (interim) transcripts
-            
-        Returns:
-            Formatted transcript string
+        Get the complete formatted transcript in clean Q&A style.
+        Ensures fragmented entries are merged and filtered.
         """
         transcript_lines = []
         
+        # 1. Clean and filter the raw transcript
+        cleaned_entries = []
         for entry in self.transcript:
-            # Skip non-final transcripts unless requested
-            if not include_non_final and not entry.get('is_final', True):
+            # ONLY take final entries to avoid "Of", "Of co" fragments
+            if not entry.get('is_final', True):
+                continue
+            
+            text = entry.get('text', '').strip()
+            if not text or len(text) < 2: # Skip tiny fragments
                 continue
                 
-            timestamp = entry.get('timestamp', '')
-            speaker = entry.get('speaker', 'Unknown')
-            text = entry.get('text', '')
-            
-            # Format: [HH:MM:SS] Speaker: Text
-            if timestamp:
-                time_str = timestamp.split('T')[1][:8] if 'T' in timestamp else timestamp[:8]
-                transcript_lines.append(f"[{time_str}] {speaker}: {text}")
+            cleaned_entries.append({
+                'speaker': entry.get('speaker', 'unknown'),
+                'text': text
+            })
+
+        # 2. Group consecutive turns (if the same person speaks twice in a row, merge it)
+        grouped_turns = []
+        if not cleaned_entries:
+            return ""
+
+        current_turn = cleaned_entries[0].copy()
+        
+        for i in range(1, len(cleaned_entries)):
+            next_entry = cleaned_entries[i]
+            # If same speaker AND the text isn't a duplicate of the start of the previous text
+            if next_entry['speaker'] == current_turn['speaker']:
+                # Common issue: LiveKit sends "Hello" then "Hello how are you" as two SEPARATE finals.
+                # We check if the new text already contains the old text or vice versa.
+                if next_entry['text'] in current_turn['text']:
+                    continue # Skip duplicate
+                if current_turn['text'] in next_entry['text']:
+                    current_turn['text'] = next_entry['text'] # Use the longer one
+                else:
+                    current_turn['text'] += " " + next_entry['text']
             else:
-                transcript_lines.append(f"{speaker}: {text}")
+                grouped_turns.append(current_turn)
+                current_turn = next_entry.copy()
+        
+        grouped_turns.append(current_turn)
+
+        # 3. Format with clean labels
+        for turn in grouped_turns:
+            speaker = turn['speaker']
+            text = turn['text']
+            
+            # Map "unknown" to CANDIDATE for better readability
+            if "agent" in speaker.lower() or "ai_" in speaker.lower():
+                label = "INTERVIEWER"
+            else:
+                label = "CANDIDATE"
                 
-        return '\n'.join(transcript_lines)
+            transcript_lines.append(f"{label}: {text}")
+                
+        return '\n\n'.join(transcript_lines) # Double newline for clear reading
         
-    def save_formatted_transcript(self, output_path: str = None):
+    def save_formatted_transcript(self, candidate_id: str, egress_id: str = None):
         """
-        Save formatted transcript to a text file
-        
-        Args:
-            output_path: Optional custom output path
+        Save formatted transcript to a text file in the structured folder
         """
-        if output_path is None:
-            output_path = os.path.join(
-                self.transcript_dir,
-                f"{self.interview_id}_formatted.txt"
-            )
+        folder_path = os.path.join("ai_interview", candidate_id)
+        os.makedirs(folder_path, exist_ok=True)
+
+        filename = f"{egress_id}_transcript.txt" if egress_id else f"{self.interview_id}_transcript.txt"
+        output_path = os.path.join(folder_path, filename)
             
         try:
             formatted = self.get_full_transcript()
             with open(output_path, 'w') as f:
                 f.write(f"Interview Transcript\n")
-                f.write(f"Interview ID: {self.interview_id}\n")
+                f.write(f"Candidate ID: {candidate_id}\n")
+                if egress_id:
+                    f.write(f"Egress ID: {egress_id}\n")
                 f.write(f"Generated: {datetime.now().isoformat()}\n")
                 f.write("=" * 80 + "\n\n")
                 f.write(formatted)
                 
-            logger.info(f"Formatted transcript saved: {output_path}")
+            logger.info(f"✓ Formatted transcript saved: {output_path}")
             return output_path
-            
         except Exception as e:
             logger.error(f"Error saving formatted transcript: {e}")
+            return None
+
+    def save_json_transcript(self, candidate_id: str, egress_id: str = None):
+        """
+        Save full transcript data to a JSON file in the structured folder
+        """
+        folder_path = os.path.join("ai_interview", candidate_id)
+        os.makedirs(folder_path, exist_ok=True)
+
+        filename = f"{egress_id}.json" if egress_id else f"{self.interview_id}.json"
+        output_path = os.path.join(folder_path, filename)
+
+        try:
+            export_data = {
+                'candidate_id': candidate_id,
+                'session_id': self.interview_id,
+                'exported_at': datetime.now().isoformat(),
+                'transcript': self.transcript,
+            }
+            with open(output_path, 'w') as f:
+                json.dump(export_data, f, indent=2)
+            logger.info(f"✓ JSON transcript saved: {output_path}")
+            return output_path
+        except Exception as e:
+            logger.error(f"Error saving JSON transcript: {e}")
+            return None
+
+    async def publish_to_s3(self, local_path: str, candidate_id: str, s3_filename: str):
+        """
+        Upload the transcript file to the S3 bucket using Boto3
+        """
+        try:
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+                aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1")
+            )
+            
+            bucket = os.getenv("S3_BUCKET")
+            s3_key = f"ai_interview/{candidate_id}/{s3_filename}"
+            
+            logger.info(f"Uploading transcript to S3: s3://{bucket}/{s3_key}")
+            s3_client.upload_file(local_path, bucket, s3_key)
+            logger.info("✓ S3 Upload successful")
+            return f"https://{bucket}.s3.amazonaws.com/{s3_key}"
+        except Exception as e:
+            logger.error(f"Failed to upload to S3: {e}")
             return None
             
     def get_transcript_statistics(self) -> Dict:

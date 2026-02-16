@@ -1,0 +1,31 @@
+{
+  "name": "ai-interview-system",
+  "version": "1.0.0",
+  "description": "A production-ready AI-powered interview system using LiveKit and Google's Gemini Live API. Conducts one-on-one interviews with candidates, records complete sessions, and provides automated evaluation.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@personal.github.com:priyankakommani/livekit-live-api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "aws-sdk": "^2.1693.0",
+    "busboy": "^1.6.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "livekit-server-sdk": "^2.15.0",
+    "ws": "^8.19.0"
+  }
+}
