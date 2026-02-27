@@ -1,0 +1,14 @@
+Interview Transcript
+Candidate ID: 1234
+Egress ID: session_2026-02-27T06-02-20-353Z
+Generated: 2026-02-27T06:03:01.611Z
+================================================================================
+INTERVIEWER: Hi! I'm excited to learn about your experience in software development. How are you doing today?
+
+CANDIDATE: I'm doing good could you ask me the second question.
+
+INTERVIEWER: That's great to hear! To start, could you tell me a bit about your current role and responsibilities?
+
+CANDIDATE: కరెక్ట్ లే ముఖ్యంగా బ్యాంక్ డెవలపర్ నెక్ నౌన్స్ కంపెనీ
+
+INTERVIEWER: That sounds interesting. What about a challenging project you've worked on recently? Tell me about it.

@@ -101,20 +101,14 @@ export default defineAgent({
                 console.error("Error stopping recording:", e.message);
             }
 
-            // Save and upload transcripts to S3
+            // Upload transcripts to S3 (in-memory, no local files)
             try {
-                const txtPath = transcription.saveFormattedTranscript(candidateId, uniqueSessionId);
-                const jsonPath = transcription.saveJsonTranscript(candidateId, uniqueSessionId);
-
-                if (txtPath) {
-                    await transcription.publishToS3(txtPath, candidateId, `${uniqueSessionId}_transcript.txt`);
+                const urls = await transcription.uploadTranscriptsToS3(candidateId, uniqueSessionId);
+                if (urls) {
+                    console.log("✅ Transcripts uploaded to S3 successfully.");
                 }
-                if (jsonPath) {
-                    await transcription.publishToS3(jsonPath, candidateId, `${uniqueSessionId}.json`);
-                }
-                console.log("✅ Transcripts uploaded to S3.");
             } catch (e) {
-                console.error("Error saving/uploading transcripts:", e.message);
+                console.error("Error uploading transcripts:", e.message);
             }
 
             // Notify frontend that interview is done

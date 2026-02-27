@@ -40,9 +40,7 @@ export class CloudRecordingManager {
                     accessKey: process.env.S3_ACCESS_KEY,
                     secret: process.env.S3_SECRET_KEY,
                     region,
-                    endpoint: `https://s3.${region}.amazonaws.com`,
                     bucket: process.env.S3_BUCKET,
-                    forcePathStyle: false,   // use virtual-hosted style: bucket.s3.region.amazonaws.com
                 });
             }
 

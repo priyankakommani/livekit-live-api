@@ -1,26 +1,13 @@
-import fs from 'fs';
-import path from 'path';
 import AWS from 'aws-sdk';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class TranscriptionHandler {
     /**
-     * Handles interview transcription
+     * Handles interview transcription completely in memory
      * @param {string} interviewId - Unique interview identifier
      */
     constructor(interviewId) {
         this.interviewId = interviewId;
         this.transcript = [];
-        this.transcriptDir = path.join(__dirname, 'transcripts');
-        this.transcriptFile = path.join(this.transcriptDir, `${interviewId}.jsonl`);
-
-        // Ensure transcript directory exists
-        if (!fs.existsSync(this.transcriptDir)) {
-            fs.mkdirSync(this.transcriptDir, { recursive: true });
-        }
     }
 
     /**
@@ -41,21 +28,9 @@ export class TranscriptionHandler {
             };
 
             this.transcript.push(entry);
-            await this.saveTranscriptChunk(entry);
+            // No longer saving chunks to local disk
         } catch (error) {
             console.error('Error processing transcript:', error);
-        }
-    }
-
-    /**
-     * Save individual transcript entry to file
-     * @param {object} entry - Transcript entry
-     */
-    async saveTranscriptChunk(entry) {
-        try {
-            fs.appendFileSync(this.transcriptFile, JSON.stringify(entry) + '\n');
-        } catch (error) {
-            console.error('Error saving transcript chunk:', error);
         }
     }
 
@@ -102,97 +77,79 @@ export class TranscriptionHandler {
         }).join('\n\n');
     }
 
-    /**
-     * Save formatted transcript to a text file
-     */
-    saveFormattedTranscript(candidateId, egressId = null) {
-        const folderPath = path.join(__dirname, 'ai_interview', candidateId);
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
-        }
+    getFormattedTranscriptContent(candidateId, egressId = null) {
+        const formatted = this.getFullTranscript();
+        return [
+            `Interview Transcript`,
+            `Candidate ID: ${candidateId}`,
+            egressId ? `Egress ID: ${egressId}` : '',
+            `Generated: ${new Date().toISOString()}`,
+            '='.repeat(80),
+            '',
+            formatted
+        ].filter(Boolean).join('\n');
+    }
 
-        const filename = egressId ? `${egressId}_transcript.txt` : `${this.interviewId}_transcript.txt`;
-        const outputPath = path.join(folderPath, filename);
-
-        try {
-            const formatted = this.getFullTranscript();
-            const content = [
-                `Interview Transcript`,
-                `Candidate ID: ${candidateId}`,
-                egressId ? `Egress ID: ${egressId}` : '',
-                `Generated: ${new Date().toISOString()}`,
-                '='.repeat(80),
-                '',
-                formatted
-            ].filter(Boolean).join('\n');
-
-            fs.writeFileSync(outputPath, content);
-            console.log(`✓ Formatted transcript saved: ${outputPath}`);
-            return outputPath;
-        } catch (error) {
-            console.error('Error saving formatted transcript:', error);
-            return null;
-        }
+    getJsonTranscriptContent(candidateId) {
+        const exportData = {
+            candidate_id: candidateId,
+            session_id: this.interviewId,
+            exported_at: new Date().toISOString(),
+            transcript: this.transcript,
+        };
+        return JSON.stringify(exportData, null, 2);
     }
 
     /**
-     * Save full transcript data to a JSON file
+     * Upload the transcript directly to S3 without using local files
      */
-    saveJsonTranscript(candidateId, egressId = null) {
-        const folderPath = path.join(__dirname, 'ai_interview', candidateId);
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
-        }
+    async uploadTranscriptsToS3(candidateId, uniqueSessionId) {
+        const region = process.env.S3_REGION || 'ap-south-1';
+        const bucket = process.env.S3_BUCKET;
 
-        const filename = egressId ? `${egressId}.json` : `${this.interviewId}.json`;
-        const outputPath = path.join(folderPath, filename);
-
-        try {
-            const exportData = {
-                candidate_id: candidateId,
-                session_id: this.interviewId,
-                exported_at: new Date().toISOString(),
-                transcript: this.transcript,
-            };
-            fs.writeFileSync(outputPath, JSON.stringify(exportData, null, 2));
-            console.log(`✓ JSON transcript saved: ${outputPath}`);
-            return outputPath;
-        } catch (error) {
-            console.error('Error saving JSON transcript:', error);
+        if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) {
+            console.warn('S3 credentials not configured. Skipping transcript upload.');
             return null;
         }
-    }
 
-    /**
-     * Upload the transcript file to S3
-     */
-    async publishToS3(localPath, candidateId, s3Filename) {
         try {
-            const region = process.env.S3_REGION || 'us-east-1';
             const s3Client = new AWS.S3({
                 accessKeyId: process.env.S3_ACCESS_KEY,
                 secretAccessKey: process.env.S3_SECRET_KEY,
                 region,
-                endpoint: `https://s3.${region}.amazonaws.com`,
-                s3ForcePathStyle: false,
             });
 
-            const bucket = process.env.S3_BUCKET;
-            const s3Key = `ai_interview/${candidateId}/${s3Filename}`;
+            const txtContent = this.getFormattedTranscriptContent(candidateId, uniqueSessionId);
+            const txtKey = `ai_interview/${candidateId}/${uniqueSessionId}_transcript.txt`;
 
-            console.log(`Uploading transcript to S3: s3://${bucket}/${s3Key}`);
-
-            const fileContent = fs.readFileSync(localPath);
             await s3Client.upload({
                 Bucket: bucket,
-                Key: s3Key,
-                Body: fileContent
+                Key: txtKey,
+                Body: txtContent,
+                ContentType: 'text/plain'
             }).promise();
 
-            console.log('✓ S3 Upload successful');
-            return `https://${bucket}.s3.amazonaws.com/${s3Key}`;
+            console.log(`✓ Text transcript uploaded: s3://${bucket}/${txtKey}`);
+
+            const jsonContent = this.getJsonTranscriptContent(candidateId);
+            const jsonKey = `ai_interview/${candidateId}/${uniqueSessionId}.json`;
+
+            await s3Client.upload({
+                Bucket: bucket,
+                Key: jsonKey,
+                Body: jsonContent,
+                ContentType: 'application/json'
+            }).promise();
+
+            console.log(`✓ JSON transcript uploaded: s3://${bucket}/${jsonKey}`);
+
+            return {
+                txtUrl: `https://${bucket}.s3.${region}.amazonaws.com/${txtKey}`,
+                jsonUrl: `https://${bucket}.s3.${region}.amazonaws.com/${jsonKey}`,
+            };
+
         } catch (error) {
-            console.error('Failed to upload to S3:', error);
+            console.error('Failed to upload transcripts to S3:', error);
             return null;
         }
     }
