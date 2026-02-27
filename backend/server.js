@@ -28,10 +28,13 @@ if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
 }
 
 // AWS S3 Configuration
+const awsRegion = process.env.AWS_REGION || 'us-east-1';
 const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_KEY,
-    region: process.env.AWS_REGION
+    region: awsRegion,
+    endpoint: `https://s3.${awsRegion}.amazonaws.com`,
+    s3ForcePathStyle: false,
 });
 
 const egressClient = new EgressClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);

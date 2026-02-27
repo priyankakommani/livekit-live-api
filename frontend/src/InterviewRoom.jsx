@@ -202,10 +202,11 @@ const InterviewRoom = () => {
     const handleEndCall = async () => {
         if (confirm('Are you sure you want to end the interview?')) {
             // Signal server/agent we are done via Data Channel
+            // topic must match what the agent listens for: "user_actions"
             if (room && room.localParticipant) {
                 const payload = JSON.stringify({ type: "USER_ENDED_CALL" });
                 const encoder = new TextEncoder();
-                await room.localParticipant.publishData(encoder.encode(payload), { reliable: true });
+                await room.localParticipant.publishData(encoder.encode(payload), { reliable: true, topic: "user_actions" });
 
                 // Give it a second to send before disconnecting
                 setTimeout(() => {

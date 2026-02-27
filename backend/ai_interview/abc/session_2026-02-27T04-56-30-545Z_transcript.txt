@@ -1,0 +1,14 @@
+Interview Transcript
+Candidate ID: abc
+Egress ID: session_2026-02-27T04-56-30-545Z
+Generated: 2026-02-27T04:57:21.490Z
+================================================================================
+INTERVIEWER: Hi! I'm excited to learn about your experience in software development. How are you doing today?
+
+CANDIDATE: I'm doing good.
+
+INTERVIEWER: That's great to hear! To get started, could you tell me a bit about your current role and responsibilities?
+
+CANDIDATE: సో సో గనక మొత్తం మీద బాక్ నెల పోయినట్టు నోస్ కంపెనీ
+
+INTERVIEWER: I see. Could you tell me a bit about your most recent position before that?

@@ -7,6 +7,7 @@ const PostInterview = () => {
     const API_BASE_URL = import.meta.env.VITE_API_URL || '';
     const [recordingData, setRecordingData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [pollError, setPollError] = useState(false);
     const [roomName, setRoomName] = useState('');
 
     useEffect(() => {
@@ -21,12 +22,22 @@ const PostInterview = () => {
             body: JSON.stringify({ sessionId, roomName: storedRoom })
         }).catch(err => console.error("Error ending session:", err));
 
-        // Poll for recording
+        // Poll for recording — max 36 attempts × 5s = 3 minutes
+        const MAX_POLLS = 36;
+        let pollCount = 0;
+        let pollTimer = null;
+
         const pollRecording = async () => {
+            pollCount++;
+            if (pollCount > MAX_POLLS) {
+                setLoading(false);
+                setPollError(true);
+                return;
+            }
+
             try {
-                // Use the room name to find the recording
                 const targetRoom = storedRoom || sessionId;
-                console.log("Checking recording for:", targetRoom);
+                console.log(`Checking recording for: ${targetRoom} (attempt ${pollCount}/${MAX_POLLS})`);
 
                 const res = await fetch(`${API_BASE_URL}/api/recording/${targetRoom}`);
                 const data = await res.json();
@@ -35,17 +46,20 @@ const PostInterview = () => {
                     setRecordingData(data);
                     setLoading(false);
                 } else {
-                    // Retry in 5 seconds
-                    setTimeout(pollRecording, 5000);
+                    pollTimer = setTimeout(pollRecording, 5000);
                 }
             } catch (error) {
                 console.error("Error polling recording:", error);
-                setTimeout(pollRecording, 5000);
+                pollTimer = setTimeout(pollRecording, 5000);
             }
         };
 
         // Start polling immediately
         pollRecording();
+
+        return () => {
+            if (pollTimer) clearTimeout(pollTimer);
+        };
 
     }, [sessionId]);
 
@@ -96,10 +110,17 @@ const PostInterview = () => {
                             <label className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-2 block">
                                 Recording Status
                             </label>
-                            {loading ? (
+                            {loading && !pollError ? (
                                 <div className="flex items-center gap-3 text-yellow-400 bg-yellow-400/10 px-4 py-3 rounded-xl border border-yellow-400/20">
                                     <RefreshCw className="animate-spin" size={18} />
                                     <span>Processing recording... (this may take a minute)</span>
+                                </div>
+                            ) : pollError ? (
+                                <div className="flex flex-col gap-2 text-red-400 bg-red-400/10 px-4 py-3 rounded-xl border border-red-400/20">
+                                    <span className="font-semibold">Recording not available yet.</span>
+                                    <span className="text-sm text-slate-400">
+                                        LiveKit Egress may still be processing. Use your Room ID above to check back later via <code className="font-mono text-xs">/api/recording/&#123;roomId&#125;</code>.
+                                    </span>
                                 </div>
                             ) : (
                                 <div className="space-y-3">

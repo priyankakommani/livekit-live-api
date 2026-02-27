@@ -1,0 +1,14 @@
+Interview Transcript
+Candidate ID: oijh
+Egress ID: session_2026-02-27T05-01-52-372Z
+Generated: 2026-02-27T05:03:01.868Z
+================================================================================
+INTERVIEWER: Hi! I'm excited to learn about your experience in software development. How are you doing today?
+
+CANDIDATE: I'm doing
+
+INTERVIEWER: That's great to hear! To get started, could you tell me a bit about your current role and responsibilities?
+
+CANDIDATE: ఆఫ్ కోర్స్ కరెంట్ లో ముఖ్యంగా భాగం లో రెప్పరేట్ నాటి ముసుగు
+
+INTERVIEWER: That sounds interesting. What about a challenging project you've worked on recently? What were the challenges and how did you approach them?

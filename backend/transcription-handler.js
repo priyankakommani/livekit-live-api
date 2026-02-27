@@ -168,10 +168,13 @@ export class TranscriptionHandler {
      */
     async publishToS3(localPath, candidateId, s3Filename) {
         try {
+            const region = process.env.S3_REGION || 'us-east-1';
             const s3Client = new AWS.S3({
                 accessKeyId: process.env.S3_ACCESS_KEY,
                 secretAccessKey: process.env.S3_SECRET_KEY,
-                region: process.env.S3_REGION || 'us-east-1'
+                region,
+                endpoint: `https://s3.${region}.amazonaws.com`,
+                s3ForcePathStyle: false,
             });
 
             const bucket = process.env.S3_BUCKET;

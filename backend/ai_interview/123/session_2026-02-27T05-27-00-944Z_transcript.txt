@@ -1,0 +1,10 @@
+Interview Transcript
+Candidate ID: 123
+Egress ID: session_2026-02-27T05-27-00-944Z
+Generated: 2026-02-27T05:27:41.678Z
+================================================================================
+INTERVIEWER: Hi! I'm excited to learn about your experience in software development. How are you doing today?
+
+CANDIDATE: <noise>
+
+INTERVIEWER: I'm doing great, thanks for asking! Let's dive into your background. Could you tell me a bit about your current role and responsibilities?
