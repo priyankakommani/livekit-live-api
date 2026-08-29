@@ -303,5 +303,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         // cause "runner initialization timed out" there, so relax both.
         numIdleProcesses: 1,
         initializeProcessTimeout: 60_000,
+        // In production the worker's health server binds a hardcoded 8081 and
+        // ignores $PORT. On hosts that route to an injected port (Render/Railway
+        // web services), bind that instead so health checks pass. Falls back to
+        // the framework default when PORT is unset (e.g. a background worker).
+        ...(process.env.PORT ? { port: Number(process.env.PORT) } : {}),
     }));
 }
