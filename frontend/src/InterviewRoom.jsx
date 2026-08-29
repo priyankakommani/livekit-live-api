@@ -72,25 +72,28 @@ const InterviewRoom = () => {
                     track.attach(remoteVideoRef.current);
                 }
             } else if (track.kind === 'audio') {
-                // Create audio element to play the AI agent's voice
+                // Attach the AI agent's voice to a hidden <audio> element in the DOM.
                 const audioElement = track.attach();
                 audioElement.autoplay = true;
+                audioElement.setAttribute('playsinline', 'true');
                 audioElement.volume = 1.0;
-
-                // Store reference for cleanup
+                audioElement.style.display = 'none';
+                document.body.appendChild(audioElement);
                 audioElementsRef.current.push(audioElement);
 
-                // Try to play immediately
-                audioElement.play().then(() => {
-                    console.log('Audio playing successfully');
-                    setAudioEnabled(true);
-                }).catch(err => {
-                    console.warn('Audio autoplay blocked, user interaction needed:', err);
-                    // Audio will play after user clicks "Enable Audio" button
+                audioElement.play().catch(() => {
+                    // Autoplay blocked — the AudioPlaybackStatusChanged handler
+                    // and the first user gesture will unblock it.
                 });
 
-                document.body.appendChild(audioElement);
+                // Reflect LiveKit's own playback gate.
+                setAudioEnabled(newRoom.canPlaybackAudio);
             }
+        });
+
+        // Fires when the browser blocks / allows audio playback for the room.
+        newRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+            setAudioEnabled(newRoom.canPlaybackAudio);
         });
 
         // Listen for data packets (clean finish signal and transcripts)
@@ -125,6 +128,11 @@ const InterviewRoom = () => {
         const connect = async () => {
             try {
                 await newRoom.connect(url, token);
+                // If the browser is blocking audio, surface the "Enable Audio" button.
+                setAudioEnabled(newRoom.canPlaybackAudio);
+                if (!newRoom.canPlaybackAudio) {
+                    newRoom.startAudio().catch(() => { /* needs a user gesture */ });
+                }
             } catch (error) {
                 console.error('Failed to connect:', error);
             }
@@ -132,7 +140,17 @@ const InterviewRoom = () => {
 
         connect();
 
+        // Any first interaction on the page unblocks audio playback.
+        const unlockAudio = () => {
+            newRoom.startAudio().catch(() => {});
+            audioElementsRef.current.forEach((el) => el.play().catch(() => {}));
+        };
+        document.addEventListener('pointerdown', unlockAudio);
+        document.addEventListener('keydown', unlockAudio);
+
         return () => {
+            document.removeEventListener('pointerdown', unlockAudio);
+            document.removeEventListener('keydown', unlockAudio);
             newRoom.disconnect();
         };
     }, [token, url, sessionId, navigate]);
@@ -189,14 +207,19 @@ const InterviewRoom = () => {
         }
     };
 
-    const enableAudio = () => {
-        // Play all audio elements
-        audioElementsRef.current.forEach(audioEl => {
-            audioEl.play().then(() => {
-                console.log('Audio enabled and playing');
-                setAudioEnabled(true);
-            }).catch(err => console.error('Failed to enable audio:', err));
-        });
+    const enableAudio = async () => {
+        try {
+            // LiveKit's own unlock — must run inside this click handler.
+            if (room) {
+                await room.startAudio();
+            }
+            await Promise.all(
+                audioElementsRef.current.map((el) => el.play().catch(() => {}))
+            );
+            setAudioEnabled(room ? room.canPlaybackAudio : true);
+        } catch (err) {
+            console.error('Failed to enable audio:', err);
+        }
     };
 
     const handleEndCall = async () => {
