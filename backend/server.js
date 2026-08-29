@@ -11,10 +11,24 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+// FRONTEND_URL may be a single origin or a comma-separated list.
+// Match is exact (scheme + host), trailing slashes stripped.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+const corsOptions = {
+    origin(origin, callback) {
+        // Allow non-browser clients (curl, server-to-server) with no Origin header
+        if (!origin) return callback(null, true);
+        return callback(null, allowedOrigins.includes(origin.replace(/\/$/, '')));
+    },
     credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // LiveKit Configuration

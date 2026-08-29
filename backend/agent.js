@@ -16,9 +16,51 @@ import { TranscriptionHandler } from './transcription-handler.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load env vars — root .env first, then backend/.env (root takes priority)
-dotenv.config({ path: path.join(__dirname, '../.env') });
-dotenv.config();
+// Load env vars explicitly so the agent can find them no matter where it is launched from.
+const rootEnv = dotenv.config({ path: path.join(__dirname, '../.env') });
+const backendEnv = dotenv.config({ path: path.join(__dirname, '.env') });
+
+const pickFirstNonEmpty = (...values) => {
+    for (const value of values) {
+        if (typeof value !== 'string') continue;
+
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+    }
+
+    return undefined;
+};
+
+const resolveGoogleApiKey = () => {
+    const candidates = [
+        { source: 'backend/.env GOOGLE_API_KEY', value: backendEnv.parsed?.GOOGLE_API_KEY },
+        { source: 'backend/.env GOOGLE_GENAI_API_KEY', value: backendEnv.parsed?.GOOGLE_GENAI_API_KEY },
+        { source: 'backend/.env GEMINI_API_KEY', value: backendEnv.parsed?.GEMINI_API_KEY },
+        { source: 'root .env GOOGLE_API_KEY', value: rootEnv.parsed?.GOOGLE_API_KEY },
+        { source: 'root .env GOOGLE_GENAI_API_KEY', value: rootEnv.parsed?.GOOGLE_GENAI_API_KEY },
+        { source: 'root .env GEMINI_API_KEY', value: rootEnv.parsed?.GEMINI_API_KEY },
+        { source: 'process.env GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
+        { source: 'process.env GOOGLE_API_KEY', value: process.env.GOOGLE_API_KEY },
+        { source: 'process.env GOOGLE_GENAI_API_KEY', value: process.env.GOOGLE_GENAI_API_KEY },
+    ];
+
+    const picked = candidates.find(({ value }) => typeof value === 'string' && value.trim());
+    const apiKey = picked?.value?.trim();
+
+    if (!apiKey) {
+        throw new Error(
+            'Google API key not found. Set GOOGLE_API_KEY, GOOGLE_GENAI_API_KEY, or GEMINI_API_KEY in your .env file.',
+        );
+    }
+
+    console.log(`Resolved Gemini API key from ${picked.source}`);
+
+    // Keep the resolved key in process.env so downstream SDKs can read it too.
+    process.env.GOOGLE_API_KEY = apiKey;
+    process.env.GOOGLE_GENAI_API_KEY = apiKey;
+    process.env.GEMINI_API_KEY = apiKey;
+    return apiKey;
+};
 
 export default defineAgent({
     entry: async (ctx) => {
@@ -65,10 +107,11 @@ export default defineAgent({
         // "gemini-2.0-flash-exp" was deprecated; use the preview below.
         // SDK default (non-Vertex AI): "gemini-2.5-flash-native-audio-preview-12-2025"
         const instructions = getInterviewPrompt(jobRole);
+        const googleApiKey = resolveGoogleApiKey();
 
         const model = new google.beta.realtime.RealtimeModel({
             model: "gemini-2.5-flash-native-audio-preview-12-2025",
-            apiKey: process.env.GOOGLE_API_KEY,
+            apiKey: googleApiKey,
             instructions: instructions,
             voice: "Puck",
         });
@@ -250,7 +293,9 @@ export default defineAgent({
     },
 });
 
-// Run the agent worker
-cli.runApp(new WorkerOptions({
-    agent: fileURLToPath(import.meta.url),
-}));
+// Run the agent worker only when this file is executed directly.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    cli.runApp(new WorkerOptions({
+        agent: fileURLToPath(import.meta.url),
+    }));
+}
