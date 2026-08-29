@@ -297,5 +297,11 @@ export default defineAgent({
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     cli.runApp(new WorkerOptions({
         agent: fileURLToPath(import.meta.url),
+        // Small cloud instances (Render Starter = 0.5 CPU) are slow to spin up job
+        // subprocesses — each imports aws-sdk + the Google plugin + the rtc-node
+        // native addon. Production defaults (3 prewarmed procs, 10s init timeout)
+        // cause "runner initialization timed out" there, so relax both.
+        numIdleProcesses: 1,
+        initializeProcessTimeout: 60_000,
     }));
 }
