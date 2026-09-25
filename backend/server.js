@@ -10,6 +10,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Render/most PaaS hosts sit behind a reverse proxy — trust its X-Forwarded-For
+// so req.ip reflects the real client instead of the proxy, which the rate
+// limiter below depends on.
+app.set('trust proxy', 1);
+
 // Middleware
 // FRONTEND_URL may be a single origin or a comma-separated list.
 // Match is exact (scheme + host), trailing slashes stripped.
@@ -57,12 +62,34 @@ const roomService = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_
 // In-memory storage for interview sessions (in production, use a database)
 const interviewSessions = new Map();
 
+// Basic per-IP rate limit for session creation. This service is linked from a
+// public resume/portfolio, so an unlimited endpoint is an open door to run up
+// LiveKit/Gemini/AWS usage. Not a substitute for auth, just a cost guardrail.
+const RATE_LIMIT_MAX = Number(process.env.START_RATE_LIMIT_MAX || 5);
+const RATE_LIMIT_WINDOW_MS = Number(process.env.START_RATE_LIMIT_WINDOW_MS || 60 * 60 * 1000);
+const startRequestLog = new Map(); // ip -> timestamps[]
+
+function isRateLimited(ip) {
+    const now = Date.now();
+    const timestamps = (startRequestLog.get(ip) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    timestamps.push(now);
+    startRequestLog.set(ip, timestamps);
+    return timestamps.length > RATE_LIMIT_MAX;
+}
+
 /**
  * POST /api/interview/start
  * Creates a new interview session and returns room details
  */
 app.post('/api/interview/start', async (req, res) => {
     try {
+        const clientIp = req.ip;
+        if (isRateLimited(clientIp)) {
+            return res.status(429).json({
+                error: 'Too many interviews started from this connection. Please try again later.'
+            });
+        }
+
         const { candidateName, jobRole } = req.body;
 
         if (!candidateName) {
@@ -291,9 +318,13 @@ app.get('/api/recording/:roomName', async (req, res) => {
 
 /**
  * GET /api/recordings/list
- * List all recordings
+ * List all recordings. Not used by the frontend — an internal/admin tool only,
+ * so it's gated behind ADMIN_KEY rather than left open to anyone with the URL.
  */
 app.get('/api/recordings/list', async (req, res) => {
+    if (!process.env.ADMIN_KEY || req.query.key !== process.env.ADMIN_KEY) {
+        return res.status(404).json({ error: 'Not found' });
+    }
     try {
         const s3Params = {
             Bucket: process.env.AWS_BUCKET,
